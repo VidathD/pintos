@@ -22,6 +22,8 @@
 #include "threads/palloc.h"
 #include "threads/pte.h"
 #include "threads/thread.h"
+#include "lib/stdio.h"
+#include "lib/string.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #include "userprog/exception.h"
@@ -64,11 +66,85 @@ static char **read_command_line (void);
 static char **parse_options (char **argv);
 static void run_actions (char **argv);
 static void usage (void);
+void run_interactive_shell(void);
 
 #ifdef FILESYS
 static void locate_block_devices (void);
 static void locate_block_device (enum block_type, const char *name);
 #endif
+
+void run_interactive_shell(void) {
+    char command[128];
+    int index;
+    uint8_t c;
+
+    printf("\n\nWelcome to pintos kernel monitor shell\n\n");
+    printf("CS2042> ");
+    
+    while (1) {
+        index = 0;
+        
+        // Inner loop: Read keystrokes until 'Enter' is pressed
+        while (1) {
+            c = input_getc();
+            // Handle Enter
+            if (c == '\r' || c == '\n') {
+                printf("\n");
+                command[index] = '\0'; 
+                break;
+            }
+            
+            // Handle Backspace
+            if (c == '\b' && index > 0) {
+                index--;
+                printf("\b \b"); 
+                continue;
+            }
+            
+            // printable characters only for command (32 to 126)
+            if (index < 127 && c >= 32 && c <= 126) {
+                command[index++] = c;
+                printf("%c", c); 
+            }
+        }
+        
+        // Evaluate the captured command string
+        if (index > 0) {
+            if (strcmp(command, "whoami") == 0) {
+                printf("CS2042 - OS\n"); 
+            } 
+            else if (strcmp(command, "shutdown") == 0) {
+                // Shuts down Pintos and exits qemu
+                shutdown_power_off(); 
+            }
+            else if (strcmp(command, "time") == 0) {
+                // rtc_get_time() returns seconds since Unix epoch
+                printf("%lu\n", rtc_get_time()); 
+            }
+            else if (strcmp(command, "ram") == 0) {
+                // Each page is 4KB, multiply by available pages
+                printf("%d KB\n", init_ram_pages * 4); 
+            }
+            else if (strcmp(command, "thread") == 0) {
+                // Built-in Pintos function to print thread statistics
+                thread_print_stats(); 
+            }
+            else if (strcmp(command, "priority") == 0) {
+                // Retrieves the priority of the current thread
+                printf("%d\n", thread_get_priority());
+            }
+            else if (strcmp(command, "exit") == 0) {
+                printf("Exiting interactive shell... Bye!\n");
+                break; 
+            }
+            else {
+                printf("Unknown command: %s\n", command);
+            }
+        }
+        
+        printf("CS2042> ");
+    }
+}
 
 int pintos_init (void) NO_RETURN;
 
@@ -133,6 +209,7 @@ pintos_init (void)
     /* Run actions specified on kernel command line. */
     run_actions (argv);
   } else {
+    run_interactive_shell();
     // TODO: no command line passed to kernel. Run interactively 
   }
 
@@ -140,7 +217,7 @@ pintos_init (void)
   shutdown ();
   thread_exit ();
 }
-
+
 /* Clear the "BSS", a segment that should be initialized to
    zeros.  It isn't actually stored on disk or zeroed by the
    kernel loader, so we have to zero it ourselves.
