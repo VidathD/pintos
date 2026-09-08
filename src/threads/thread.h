@@ -90,6 +90,8 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
    int base_priority;                  /* Priority without donations. */
+   int nice;                           /* Nice value. */
+   int recent_cpu;                     /* Recent CPU, in fixed-point format. */
     struct list_elem allelem;           /* List element for all threads list. */
    struct list donations;              /* Threads donating priority to us. */
    struct list_elem donation_elem;     /* Element in a donor's list. */
