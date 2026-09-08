@@ -89,7 +89,13 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+   int base_priority;                  /* Priority without donations. */
     struct list_elem allelem;           /* List element for all threads list. */
+   struct list donations;              /* Threads donating priority to us. */
+   struct list_elem donation_elem;     /* Element in a donor's list. */
+   struct lock *waiting_lock;          /* Lock this thread is waiting for. */
+   struct lock *donation_lock;         /* Lock causing this donation. */
+   bool donation_active;               /* Whether donation_elem is linked. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -124,6 +130,9 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
+void thread_yield_if_higher (void);
+void thread_donate (struct thread *, struct lock *);
+void thread_remove_donations (struct thread *, struct lock *);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);
