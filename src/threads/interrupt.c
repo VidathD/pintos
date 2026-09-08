@@ -224,7 +224,7 @@ intr_yield_on_return (void)
   ASSERT (intr_context ());
   yield_on_return = true;
 }
-
+
 /* 8259A Programmable Interrupt Controller. */
 
 /* Initializes the PICs.  Refer to [8259A] for details.
@@ -273,7 +273,7 @@ pic_end_of_interrupt (int irq)
   if (irq >= 0x28)
     outb (0xa0, 0x20);
 }
-
+
 /* Creates an gate that invokes FUNCTION.
 
    The gate has descriptor privilege level DPL, meaning that it
