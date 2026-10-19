@@ -528,6 +528,9 @@ init_thread (struct thread *t, const char *name, int priority)
   memset (t, 0, sizeof *t);
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
+#ifdef USERPROG
+  t->exit_status = -1;
+#endif
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->base_priority = priority;

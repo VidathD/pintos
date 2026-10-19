@@ -30,19 +30,40 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+`#define MAX_ARGS 128` limits the temporary kernel argument-pointer array to
+the command-line size accepted by the Pintos utility. `load()` and
+`setup_stack()` now receive `argv` and `argc`.
+
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe how you implemented argument parsing.  How do
 >> you arrange for the elements of argv[] to be in the right order?
 >> How do you avoid overflowing the stack page?
 
+`start_process()` uses `strtok_r()` to split the copied command line on
+spaces. The first token is opened as the executable; all tokens are passed to
+`setup_stack()`. Strings are copied onto the user stack from last to first,
+while their user addresses are retained in `argv[]`. The pointer array is
+then pushed in forward order, followed by `argv`, `argc`, and a fake return
+address. Before mapping the stack, the total space for strings, alignment,
+pointers, and metadata is checked against one page.
+
 ---- RATIONALE ----
 
 >> A3: Why does Pintos implement strtok_r() but not strtok()?
 
+`strtok_r()` stores its parsing state in a caller-provided variable, so
+separate parsing operations do not share hidden global state. This is safer
+when kernel code is interrupted or multiple threads parse command lines.
+
 >> A4: In Pintos, the kernel separates commands into a executable name
 >> and arguments.  In Unix-like systems, the shell does this
 >> separation.  Identify at least two advantages of the Unix approach.
+
+The shell can provide quoting, wildcard expansion, pipelines, redirection,
+and environment-variable expansion before starting a program. Keeping this
+logic outside the kernel makes the kernel smaller and lets users replace or
+configure shell behavior without changing the operating system.
 
 			     SYSTEM CALLS
 			     ============
