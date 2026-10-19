@@ -30,6 +30,15 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+`struct child_process` records a child TID, exit status, termination state,
+parent ownership, and a semaphore used to synchronize `wait`.
+
+`struct start_info` passes the copied command line and child-process record
+from `process_execute()` to the new process thread.
+
+`struct thread::children` stores records for the process's direct children.
+`struct thread::child_info` points to this process's record in its parent.
+
 `#define MAX_ARGS 128` limits the temporary kernel argument-pointer array to
 the command-line size accepted by the Pintos utility. `load()` and
 `setup_stack()` now receive `argv` and `argc`.
@@ -92,6 +101,12 @@ configure shell behavior without changing the operating system.
 
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
+
+Each parent keeps one `child_process` record per direct child. `process_wait()`
+rejects unknown or already-waited children, blocks on the child's semaphore,
+then returns its saved exit status and frees the record. On termination, a
+child saves its status and signals the semaphore. If the parent exits first,
+ownership is released and the child frees the record after it terminates.
 
 >> B6: Any access to user program memory at a user-specified address
 >> can fail due to a bad pointer value.  Such accesses must cause the

@@ -530,6 +530,8 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
 #ifdef USERPROG
   t->exit_status = -1;
+  list_init (&t->children);
+  t->child_info = NULL;
 #endif
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;

@@ -111,6 +111,8 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
     int exit_status;                    /* Process exit status. */
+    struct list children;                /* Child process records. */
+    struct child_process *child_info;   /* This process's parent record. */
 #endif
 
     /* Owned by thread.c. */
