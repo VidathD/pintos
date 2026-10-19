@@ -1,0 +1,8 @@
+services:
+  pintos:
+    image: pintos
+    stdin_open: true # equivalent to -i
+    tty: true        # equivalent to -t
+    volumes:
+      # equivalent to --mount type=bind,source=...,target=...
+      - "./src:/pintos/src"
