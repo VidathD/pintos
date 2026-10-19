@@ -543,6 +543,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->exit_status = -1;
   list_init (&t->children);
   t->child_info = NULL;
+  list_init (&t->file_descriptors);
+  t->next_fd = 2;
+  t->executable = NULL;
 #endif
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;

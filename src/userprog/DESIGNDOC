@@ -83,9 +83,47 @@ configure shell behavior without changing the operating system.
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+In `userprog/syscall.h`:
+`typedef int pid_t;`
+Process identifier type mapped directly to `tid_t`.
+
+In `userprog/syscall.c`:
+`struct file_desc`
+Records an integer file descriptor handle, an open `struct file *`, and a list element for per-process tracking.
+
+`static struct lock filesys_lock;`
+Global mutual exclusion lock serializing all calls into the file system to prevent race conditions.
+
+In `userprog/process.c`:
+`struct child_process`:
+Added `bool loaded;` and `struct semaphore load_sema;` to synchronize ELF binary loading in `start_process()` with the parent in `process_execute()`.
+
+`static struct lock process_lock;`
+Protects child list manipulations and shared lifecycle flags between parents and terminating children.
+
+In `threads/thread.h` (`struct thread`):
+`struct list file_descriptors;`: List of open file descriptors owned by this process.
+`int next_fd;`: Next file descriptor integer to allocate (starts at 2).
+`struct file *executable;`: Open executable file kept open with writes denied while process runs.
+
 >> B2: Describe how file descriptors are associated with open files.
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
+
+File descriptors are associated with open files through a per-process linked list
+(`file_descriptors` in `struct thread`) containing `struct file_desc` entries.
+Each entry maps an integer `fd` to an open `struct file *`.
+
+When `open()` is called, a new `struct file_desc` is dynamically allocated and
+assigned an integer from the process's `next_fd` counter starting at 2 (0 and 1
+are reserved for standard input and output). When `close()` is called or the
+process exits, the entry is removed from the list, the file is closed, and the
+descriptor structure is freed.
+
+File descriptors are unique only within a single process, not across the entire OS.
+Different processes maintain disjoint descriptor lists and may have the same `fd`
+number referring to different open files. File descriptors are not inherited across
+`exec()`.
 
 ---- ALGORITHMS ----
 
@@ -145,12 +183,57 @@ resources normally after a successful copy.
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
 
+In `process_execute()`, the parent creates a `struct child_process` with
+`loaded = false` and initializes `load_sema` to 0. After calling `thread_create()`,
+the parent blocks by invoking `sema_down(&child->load_sema)`.
+
+When the new child thread starts in `start_process()`, it invokes `load()`.
+Once `load()` completes (or argument parsing detects an overflow), the child
+records the boolean outcome in `child->loaded` and signals `sema_up(&child->load_sema)`.
+
+The parent wakes up from `sema_down()` and inspects `child->loaded`. If `true`,
+it returns the child's `tid`. If `false`, the parent waits for the failing child
+to terminate cleanly (`sema_down(&child->wait_sema)`), removes the child record,
+frees it, and returns `TID_ERROR` (-1).
+
 >> B8: Consider parent process P with child process C.  How do you
 >> ensure proper synchronization and avoid race conditions when P
 >> calls wait(C) before C exits?  After C exits?  How do you ensure
 >> that all resources are freed in each case?  How about when P
 >> terminates without waiting, before C exits?  After C exits?  Are
 >> there any special cases?
+
+Synchronization between parent P and child C is handled via `wait_sema` (initialized
+to 0) and lifecycle flags (`exited`, `parent_alive`) in `struct child_process`,
+protected by `process_lock`.
+
+1. P calls wait(C) before C exits:
+   P finds C in its `children` list and blocks on `sema_down(&child->wait_sema)`.
+   When C exits, `child_process_exit()` stores its exit status, sets `exited = true`,
+   and ups `wait_sema`. P wakes, captures the status, removes C from `children`,
+   and frees `child`.
+
+2. P calls wait(C) after C exits:
+   C has already executed `child_process_exit()`, saved its status, set `exited = true`,
+   and upped `wait_sema`. When P calls `wait(C)`, `sema_down(&child->wait_sema)` returns
+   immediately. P retrieves the exit status, removes C from `children`, and frees `child`.
+
+3. P terminates before C exits:
+   In `process_exit()`, P calls `release_children()`, which sets `child->parent_alive = false`
+   for all children under `process_lock`. When C later exits in `child_process_exit()`, it
+   observes `!child->parent_alive` and frees its own `struct child_process`.
+
+4. P terminates after C exits:
+   When P terminates without waiting for C, `release_children()` checks `child->exited`.
+   Since C has already exited (`exited == true`), P frees `struct child_process`.
+
+5. Special cases:
+   - Malformed/non-child TID or duplicate wait: `process_wait()` checks if C is in P's
+     `children` list. If absent (or already removed by a prior `wait`), it returns -1 immediately.
+   - Child killed by exception: `kill()` sets `exit_status = -1` via `thread_bad_exit()`,
+     so `wait(C)` receives -1.
+   - All shared flag accesses and frees are serialized by `process_lock`, preventing
+     races between simultaneous exits.
 
 ---- RATIONALE ----
 
@@ -165,8 +248,29 @@ cleanup.
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?
 
+Advantages:
+- Dynamic sizing: Using a linked list of descriptors means processes are not bounded
+  by an arbitrary static array limit (such as 16 or 64 files); they can open as many files
+  as kernel heap memory permits.
+- Memory efficiency: Processes only allocate memory for descriptors currently open, rather
+  than wasting memory on unused array slots.
+- Per-process isolation: Each process has its own list, preventing global descriptor leaks
+  and eliminating multi-process lock contention on a centralized file table.
+
+Disadvantages:
+- Traversal overhead: Finding a descriptor by `fd` requires an O(N) list traversal rather
+  than an O(1) array index lookup.
+- Allocation overhead: Every `open()` performs a `malloc()` and every `close()` performs a
+  `free()`, adding heap allocation overhead.
+
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+
+We maintained the 1:1 identity mapping between `tid_t` and `pid_t` because Pintos
+user programs have a single thread of execution per process. Keeping an identity
+mapping avoids the complexity, memory overhead, and synchronization of an additional
+translation table between threads and processes, while fully satisfying all project
+specifications.
 
 			   SURVEY QUESTIONS
 			   ================
