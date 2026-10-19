@@ -92,12 +92,23 @@ configure shell behavior without changing the operating system.
 >> B3: Describe your code for reading and writing user data from the
 >> kernel.
 
+`copy_from_user()` and `copy_to_user()` validate the complete user buffer
+range before copying. They reject kernel addresses, wraparound, and unmapped
+pages using `pagedir_get_page()`. Invalid memory terminates the current
+process.
+
 >> B4: Suppose a system call causes a full page (4,096 bytes) of data
 >> to be copied from user space into the kernel.  What is the least
 >> and the greatest possible number of inspections of the page table
 >> (e.g. calls to pagedir_get_page()) that might result?  What about
 >> for a system call that only copies 2 bytes of data?  Is there room
 >> for improvement in these numbers, and how much?
+
+The helpers inspect each distinct page touched by a buffer. A 4,096-byte
+buffer therefore requires one inspection when page-aligned, or two when it
+crosses a page boundary. A 2-byte buffer requires one or two inspections for
+the same cases. Caching validated pages could reduce repeated inspections
+within one system call, but is unnecessary for the current implementation.
 
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
@@ -122,6 +133,11 @@ ownership is released and the child frees the record after it terminates.
 >> paragraphs, describe the strategy or strategies you adopted for
 >> managing these issues.  Give an example.
 
+The copy helpers validate user ranges before dereferencing them, keeping
+pointer validation separate from system-call logic. Invalid pointers terminate
+the process before locks or temporary buffers are acquired; callers release
+resources normally after a successful copy.
+
 ---- SYNCHRONIZATION ----
 
 >> B7: The "exec" system call returns -1 if loading the new executable
@@ -140,6 +156,11 @@ ownership is released and the child frees the record after it terminates.
 
 >> B9: Why did you choose to implement access to user memory from the
 >> kernel in the way that you did?
+
+Pre-validating page mappings is simpler to reason about and makes invalid
+pointer handling explicit. It avoids recovering from a kernel-mode page fault
+in the middle of a system call, where locks or temporary buffers might need
+cleanup.
 
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?

@@ -323,6 +323,17 @@ thread_exit (void)
   NOT_REACHED ();
 }
 
+/* Terminates the current process with the failure status used for
+   abnormal user-process termination. */
+void
+thread_bad_exit (void)
+{
+#ifdef USERPROG
+  thread_current ()->exit_status = -1;
+#endif
+  thread_exit ();
+}
+
 /* Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
 void

@@ -9,6 +9,7 @@ EXTRA_GRADES = $(foreach subdir,$(TEST_SUBDIRS),$($(subdir)_EXTRA_GRADES))
 OUTPUTS = $(addsuffix .output,$(TESTS) $(EXTRA_GRADES))
 ERRORS = $(addsuffix .errors,$(TESTS) $(EXTRA_GRADES))
 RESULTS = $(addsuffix .result,$(TESTS) $(EXTRA_GRADES))
+SIMULATOR = qemu
 
 ifdef PROGS
 include ../../Makefile.userprog
