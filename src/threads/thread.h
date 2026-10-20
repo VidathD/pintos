@@ -85,44 +85,44 @@ struct file;
 
 struct thread
   {
-    /* Owned by thread.c. */
-    tid_t tid;                          /* Thread identifier. */
-    enum thread_status status;          /* Thread state. */
-    char name[16];                      /* Name (for debugging purposes). */
-    uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
+   /* Owned by thread.c. */
+   tid_t tid;                          /* Thread identifier. */
+   enum thread_status status;          /* Thread state. */
+   char name[16];                      /* Name (for debugging purposes). */
+   uint8_t *stack;                     /* Saved stack pointer. */
+   int priority;                       /* Priority. */
    int base_priority;                  /* Priority without donations. */
    int nice;                           /* Nice value. */
    int recent_cpu;                     /* Recent CPU, in fixed-point format. */
-    struct list_elem allelem;           /* List element for all threads list. */
+   struct list_elem allelem;           /* List element for all threads list. */
    struct list donations;              /* Threads donating priority to us. */
    struct list_elem donation_elem;     /* Element in a donor's list. */
    struct lock *waiting_lock;          /* Lock this thread is waiting for. */
    struct lock *donation_lock;         /* Lock causing this donation. */
    bool donation_active;               /* Whether donation_elem is linked. */
 
-    /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. */
+   /* Shared between thread.c and synch.c. */
+   struct list_elem elem;              /* List element. */
 
-    /* Used by timer_sleep() and sema-based wakeups. */
-    int64_t wake_tick;                  /* Tick when this thread should wake. */
-    struct list_elem sleep_elem;        /* List element for sleeping threads. */
-    struct semaphore sleep_sema;              /* Semaphore used to block until time expires. */
+   /* Used by timer_sleep() and sema-based wakeups. */
+   int64_t wake_tick;                  /* Tick when this thread should wake. */
+   struct list_elem sleep_elem;        /* List element for sleeping threads. */
+   struct semaphore sleep_sema;              /* Semaphore used to block until time expires. */
 
 #ifdef USERPROG
-    /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
-    int exit_status;                    /* Process exit status. */
-    struct list children;                /* Child process records. */
-    struct child_process *child_info;   /* This process's parent record. */
-    struct list file_descriptors;       /* Open file descriptors list. */
-    int next_fd;                        /* Next file descriptor handle. */
-    struct file *executable;            /* Running executable file. */
+   /* Owned by userprog/process.c. */
+   uint32_t *pagedir;                  /* Page directory. */
+   int exit_status;                    /* Process exit status. */
+   struct list children;               /* Child process records. */
+   struct child_process *child_info;   /* This process's parent record. */
+   struct list file_descriptors;       /* Open file descriptors list. */
+   int next_fd;                        /* Next file descriptor handle. */
+   struct file *executable;            /* Running executable file. */
 #endif
 
-    /* Owned by thread.c. */
-    unsigned magic;                     /* Detects stack overflow. */
-  };
+   /* Owned by thread.c. */
+   unsigned magic;                     /* Detects stack overflow. */
+};
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.

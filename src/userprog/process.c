@@ -87,6 +87,8 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  /* Make a second temporary copy to extract the program name using strtok_r
+     without modifying fn_copy, which start_process needs intact. */
   fn_copy2 = palloc_get_page (0);
   if (fn_copy2 == NULL)
     {
@@ -98,6 +100,7 @@ process_execute (const char *file_name)
   if (prog_name == NULL)
     prog_name = "";
 
+  /* Allocate the child process record and startup context for the new thread. */
   child = malloc (sizeof *child);
   start = malloc (sizeof *start);
   if (child == NULL || start == NULL)
@@ -108,12 +111,16 @@ process_execute (const char *file_name)
       palloc_free_page (fn_copy2);
       return TID_ERROR;
     }
+
+  /* Initialize child status and synchronization primitives. */
   child->exit_status = -1;
   child->exited = false;
   child->parent_alive = true;
   child->loaded = false;
   sema_init (&child->wait_sema, 0);
   sema_init (&child->load_sema, 0);
+
+  /* Package startup information to pass to start_process(). */
   start->file_name = fn_copy;
   start->child = child;
 

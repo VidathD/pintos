@@ -540,12 +540,12 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
 #ifdef USERPROG
-  t->exit_status = -1;
-  list_init (&t->children);
-  t->child_info = NULL;
-  list_init (&t->file_descriptors);
-  t->next_fd = 2;
-  t->executable = NULL;
+  t->exit_status = -1; // default exit status for abnormal termination
+  list_init (&t->children); // initialize list of child processes
+  t->child_info = NULL; // initialize pointer to parent record
+  list_init (&t->file_descriptors); // initialize list of open file descriptors
+  t->next_fd = 2; // initialize next file descriptor handle (0 and 1 are reserved for stdin and stdout)
+  t->executable = NULL; // initialize pointer to running executable file
 #endif
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;

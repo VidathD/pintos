@@ -57,10 +57,9 @@ syscall_exit_thread (void)
 {
   struct thread *cur = thread_current ();
 
-  if (lock_held_by_current_thread (&filesys_lock))
-    lock_release (&filesys_lock);
-
-  acquire_filesys_lock ();
+  if (!lock_held_by_current_thread (&filesys_lock))
+    acquire_filesys_lock ();
+  
   while (!list_empty (&cur->file_descriptors))
     {
       struct list_elem *e = list_pop_front (&cur->file_descriptors);
@@ -157,13 +156,13 @@ copy_to_user (void *dst, const void *src, size_t size)
 /* System call handler functions. */
 
 static void
-sys_halt (void)
+halt (void)
 {
   shutdown_power_off ();
 }
 
 static void
-sys_exit (int status)
+exit (int status)
 {
   struct thread *cur = thread_current ();
   cur->exit_status = status;
@@ -171,20 +170,20 @@ sys_exit (int status)
 }
 
 static pid_t
-sys_exec (const char *cmd_line)
+exec (const char *cmd_line)
 {
   valid_user_string (cmd_line);
   return process_execute (cmd_line);
 }
 
 static int
-sys_wait (pid_t pid)
+wait (pid_t pid)
 {
   return process_wait (pid);
 }
 
 static bool
-sys_create (const char *file, unsigned initial_size)
+create (const char *file, unsigned initial_size)
 {
   valid_user_string (file);
   acquire_filesys_lock ();
@@ -194,7 +193,7 @@ sys_create (const char *file, unsigned initial_size)
 }
 
 static bool
-sys_remove (const char *file)
+remove (const char *file)
 {
   valid_user_string (file);
   acquire_filesys_lock ();
@@ -204,7 +203,7 @@ sys_remove (const char *file)
 }
 
 static int
-sys_open (const char *file)
+open (const char *file)
 {
   valid_user_string (file);
   acquire_filesys_lock ();
@@ -232,7 +231,7 @@ sys_open (const char *file)
 }
 
 static int
-sys_filesize (int fd)
+filesize (int fd)
 {
   struct file_desc *desc = find_file_desc (fd);
   if (desc == NULL)
@@ -245,7 +244,7 @@ sys_filesize (int fd)
 }
 
 static int
-sys_read (int fd, void *buffer, unsigned size)
+read (int fd, void *buffer, unsigned size)
 {
   valid_user_buffer (buffer, size);
 
@@ -275,7 +274,7 @@ sys_read (int fd, void *buffer, unsigned size)
 }
 
 static int
-sys_write (int fd, const void *buffer, unsigned size)
+write (int fd, const void *buffer, unsigned size)
 {
   valid_user_buffer (buffer, size);
 
@@ -302,7 +301,7 @@ sys_write (int fd, const void *buffer, unsigned size)
 }
 
 static void
-sys_seek (int fd, unsigned position)
+seek (int fd, unsigned position)
 {
   struct file_desc *desc = find_file_desc (fd);
   if (desc == NULL)
@@ -314,7 +313,7 @@ sys_seek (int fd, unsigned position)
 }
 
 static unsigned
-sys_tell (int fd)
+tell (int fd)
 {
   struct file_desc *desc = find_file_desc (fd);
   if (desc == NULL)
@@ -327,7 +326,7 @@ sys_tell (int fd)
 }
 
 static void
-sys_close (int fd)
+close (int fd)
 {
   struct file_desc *desc = find_file_desc (fd);
   if (desc == NULL)
@@ -349,67 +348,67 @@ syscall_handler (struct intr_frame *f)
   switch (syscall_nr)
     {
     case SYS_HALT:
-      sys_halt ();
+      halt ();
       break;
 
     case SYS_EXIT:
       valid_user_buffer (f->esp, sizeof (int) * 2);
-      sys_exit (((int *) f->esp)[1]);
+      exit (((int *) f->esp)[1]);
       break;
 
     case SYS_EXEC:
       valid_user_buffer (f->esp, sizeof (int) * 2);
-      f->eax = sys_exec (((const char **) f->esp)[1]);
+      f->eax = exec (((const char **) f->esp)[1]);
       break;
 
     case SYS_WAIT:
       valid_user_buffer (f->esp, sizeof (int) * 2);
-      f->eax = sys_wait (((pid_t *) f->esp)[1]);
+      f->eax = wait (((pid_t *) f->esp)[1]);
       break;
 
     case SYS_CREATE:
       valid_user_buffer (f->esp, sizeof (int) * 3);
-      f->eax = sys_create (((const char **) f->esp)[1], ((unsigned *) f->esp)[2]);
+      f->eax = create (((const char **) f->esp)[1], ((unsigned *) f->esp)[2]);
       break;
 
     case SYS_REMOVE:
       valid_user_buffer (f->esp, sizeof (int) * 2);
-      f->eax = sys_remove (((const char **) f->esp)[1]);
+      f->eax = remove (((const char **) f->esp)[1]);
       break;
 
     case SYS_OPEN:
       valid_user_buffer (f->esp, sizeof (int) * 2);
-      f->eax = sys_open (((const char **) f->esp)[1]);
+      f->eax = open (((const char **) f->esp)[1]);
       break;
 
     case SYS_FILESIZE:
       valid_user_buffer (f->esp, sizeof (int) * 2);
-      f->eax = sys_filesize (((int *) f->esp)[1]);
+      f->eax = filesize (((int *) f->esp)[1]);
       break;
 
     case SYS_READ:
       valid_user_buffer (f->esp, sizeof (int) * 4);
-      f->eax = sys_read (((int *) f->esp)[1], ((void **) f->esp)[2], ((unsigned *) f->esp)[3]);
+      f->eax = read (((int *) f->esp)[1], ((void **) f->esp)[2], ((unsigned *) f->esp)[3]);
       break;
 
     case SYS_WRITE:
       valid_user_buffer (f->esp, sizeof (int) * 4);
-      f->eax = sys_write (((int *) f->esp)[1], ((const void **) f->esp)[2], ((unsigned *) f->esp)[3]);
+      f->eax = write (((int *) f->esp)[1], ((const void **) f->esp)[2], ((unsigned *) f->esp)[3]);
       break;
 
     case SYS_SEEK:
       valid_user_buffer (f->esp, sizeof (int) * 3);
-      sys_seek (((int *) f->esp)[1], ((unsigned *) f->esp)[2]);
+      seek (((int *) f->esp)[1], ((unsigned *) f->esp)[2]);
       break;
 
     case SYS_TELL:
       valid_user_buffer (f->esp, sizeof (int) * 2);
-      f->eax = sys_tell (((int *) f->esp)[1]);
+      f->eax = tell (((int *) f->esp)[1]);
       break;
 
     case SYS_CLOSE:
       valid_user_buffer (f->esp, sizeof (int) * 2);
-      sys_close (((int *) f->esp)[1]);
+      close (((int *) f->esp)[1]);
       break;
 
     default:
