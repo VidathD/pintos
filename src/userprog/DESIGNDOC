@@ -8,9 +8,7 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Vidath Dissanayake <vidathd.24@cse.mrt.ac.lk>
 
 ---- PRELIMINARIES ----
 
@@ -20,6 +18,8 @@ FirstName LastName <email@domain.example>
 >> Please cite any offline or online sources you consulted while
 >> preparing your submission, other than the Pintos documentation, course
 >> text, lecture notes, and course staff.
+Pintos Project playlist by EE415: Intro. to Operating System: 
+  https://www.youtube.com/watch?v=RbsE0EQ9_dY&list=PLmQBKYly8OsWiRYGn1wvjwAdbuNWOBJNf
 
 			   ARGUMENT PASSING
 			   ================
@@ -61,9 +61,10 @@ pointers, and metadata is checked against one page.
 
 >> A3: Why does Pintos implement strtok_r() but not strtok()?
 
-`strtok_r()` stores its parsing state in a caller-provided variable, so
-separate parsing operations do not share hidden global state. This is safer
-when kernel code is interrupted or multiple threads parse command lines.
+`strtok_r()` is reentrant and thread safe. It stores its parsing state in a 
+caller-provided variable, so separate parsing operations do not share hidden
+global state like in strtok. This is safer when kernel code is interrupted 
+or multiple threads parse command lines.
 
 >> A4: In Pintos, the kernel separates commands into a executable name
 >> and arguments.  In Unix-like systems, the shell does this
@@ -133,7 +134,8 @@ number referring to different open files. File descriptors are not inherited acr
 `copy_from_user()` and `copy_to_user()` validate the complete user buffer
 range before copying. They reject kernel addresses, wraparound, and unmapped
 pages using `pagedir_get_page()`. Invalid memory terminates the current
-process.
+process. Internally they use `valid_user_buffer()` to validate the buffer.
+The syscalls directly use `valid_user_buffer()` and `valid_user_string()`.
 
 >> B4: Suppose a system call causes a full page (4,096 bytes) of data
 >> to be copied from user space into the kernel.  What is the least
@@ -146,16 +148,37 @@ The helpers inspect each distinct page touched by a buffer. A 4,096-byte
 buffer therefore requires one inspection when page-aligned, or two when it
 crosses a page boundary. A 2-byte buffer requires one or two inspections for
 the same cases. Caching validated pages could reduce repeated inspections
-within one system call, but is unnecessary for the current implementation.
+within one system call.
 
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
 
-Each parent keeps one `child_process` record per direct child. `process_wait()`
-rejects unknown or already-waited children, blocks on the child's semaphore,
-then returns its saved exit status and frees the record. On termination, a
-child saves its status and signals the semaphore. If the parent exits first,
-ownership is released and the child frees the record after it terminates.
+Each process maintains a list of `struct child_process` records 
+(`cur->children`) representing only its direct children created via `process_execute()`. 
+Each record contains the child's TID, `exit_status` (initialized to -1), an `exited` boolean, 
+a `parent_alive` boolean, and a `wait_sema` semaphore (initialized to 0).
+
+When a parent calls `wait(pid)`:
+1. It calls `find_child(pid)` to search its `children` list. If `pid` is not a direct child, 
+   or has already been waited on (and thus removed from the list), `process_wait()` immediately 
+   returns -1 without waiting.
+2. If found, the parent calls `sema_down(&child->wait_sema)`. If the child is still running, 
+   the parent blocks until the child terminates. If the child has already terminated, `sema_down` 
+   returns immediately because `child_process_exit()` already upped `wait_sema`.
+3. Under `process_lock`, the parent retrieves `child->exit_status`, removes the record from 
+   `cur->children`, frees the `struct child_process`, and returns the exit status.
+
+Interaction with process termination:
+- Child exits first: In `child_process_exit()`, the child sets `child->exit_status` (which 
+  is -1 if terminated by a kernel exception via `thread_bad_exit()`, or the value passed to 
+  `exit()`), sets `child->exited = true`, and signals `sema_up(&child->wait_sema)`. Because 
+  `child->parent_alive` is true, the child preserves the record so the parent can later retrieve 
+  the status even after the child's `struct thread` is destroyed. If the parent never calls `wait`, 
+  the parent frees this record upon its own exit in `release_children()`.
+- Parent exits first: In `process_exit()`, the parent calls `release_children()`, setting 
+  `child->parent_alive = false` for all active children under `process_lock`. When an orphaned 
+  child eventually terminates, it sees `!child->parent_alive` in `child_process_exit()` and frees 
+  its own record, preventing memory leaks.
 
 >> B6: Any access to user program memory at a user-specified address
 >> can fail due to a bad pointer value.  Such accesses must cause the
@@ -171,10 +194,47 @@ ownership is released and the child frees the record after it terminates.
 >> paragraphs, describe the strategy or strategies you adopted for
 >> managing these issues.  Give an example.
 
-The copy helpers validate user ranges before dereferencing them, keeping
+The copy helpers validate user ranges upfront before dereferencing them, keeping
 pointer validation separate from system-call logic. Invalid pointers terminate
-the process before locks or temporary buffers are acquired; callers release
-resources normally after a successful copy.
+the process before locks or temporary buffers are acquired. Resource cleanup is
+centralised and is handled by `process_exit()` which is called whether thread is
+is terminated normally with `thread_exit()` or abnormally with `thread_bad_exit()`.
+
+First, validation is strictly decoupled from system call execution and occurs
+in phased checkpoints. At the very entry of `syscall_handler()`, the user stack
+pointer is validated using `valid_user_buffer()` to ensure the system call number
+itself can be safely read. Once the system call number is identified, the stack
+space needed for its specific arguments (e.g., `sizeof(int) * 4` for a three-argument
+call) is validated in a single check before reading any arguments. Similarly, any
+pointer arguments (buffers or strings) are validated by helper functions
+(`valid_user_buffer()` or `valid_user_string()`) before being dereferenced. If any
+validation check fails at any stage, `thread_bad_exit()` is invoked immediately,
+terminating the process with status -1. Because this validation occurs prior to
+allocating dynamic kernel memory or acquiring synchronization locks, there is no
+partial state to roll back and no risk of abandoning held locks.
+
+Second, persistent resource cleanup is centralized in `process_exit()` rather than
+scattered across error-handling branches in each system call. When a thread terminates
+(whether normally via `exit()` or abnormally via `thread_bad_exit()`), `thread_exit()`
+always invokes `process_exit()`. Here, all opened file descriptors owned by the
+process are closed and freed via `syscall_exit_thread()`, the executable file's write
+denial is lifted and closed, the page directory is destroyed, and parent-child
+synchronization records are cleanly updated and freed. Thus, individual system calls
+do not need complex nested `goto` chains or manual rollback logic for process resources.
+
+Example: Tracing `SYS_WRITE (int fd, const void *buffer, unsigned size)`:
+1. Stack validation: `syscall_handler()` calls `valid_user_buffer(f->esp, sizeof(int) * 4)`.
+   If the user process passed a corrupted `%esp` (e.g. `NULL` or kernel memory `>= PHYS_BASE`),
+   `thread_bad_exit()` terminates the process immediately. No arguments are read.
+2. Buffer validation: Inside the `write()` handler, `valid_user_buffer(buffer, size)` checks
+   that the entire buffer from `buffer` to `buffer + size - 1` is below `PHYS_BASE`, does not
+   wrap around, and is mapped to valid user pages in the page directory. If an invalid address
+   is detected, the process terminates immediately, before `filesys_lock` is acquired.
+3. Execution and safe release: Once verified, the file descriptor is looked up. If writing
+   to a file, `acquire_filesys_lock()` is called, `file_write()` performs the I/O, and
+   `release_filesys_lock()` is executed immediately afterward.
+Because all verification precedes lock acquisition, a bad pointer can never cause the
+process to terminate while holding `filesys_lock`, ensuring no system-wide deadlocks.
 
 ---- SYNCHRONIZATION ----
 
@@ -266,7 +326,7 @@ Disadvantages:
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
 
-We maintained the 1:1 identity mapping between `tid_t` and `pid_t` because Pintos
+I maintained the 1:1 identity mapping between `tid_t` and `pid_t` because Pintos
 user programs have a single thread of execution per process. Keeping an identity
 mapping avoids the complexity, memory overhead, and synchronization of an additional
 translation table between threads and processes, while fully satisfying all project
@@ -283,9 +343,15 @@ the quarter.
 
 >> In your opinion, was this assignment, or any one of the three problems
 >> in it, too easy or too hard?  Did it take too long or too little time?
+Implementing argument parsing and process_wait was somewhat complicated.
+The rest of the syscalls were relatively easy to implement.
+Termination message and memory access as well as filesystem lock was also
+not that hard to implement.
 
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
+Implementing argument passing gave the most insight since I had to learn 
+how to implement the stack properly.
 
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you
